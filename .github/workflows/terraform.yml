@@ -32,7 +32,7 @@ jobs:
            
            
      steps:
-     - name: chechout the code  // 
+     - name: chechout the code  
        uses: actions/checkout@v4
 
       # we want to setup terraform to run our code 
