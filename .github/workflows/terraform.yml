@@ -1,0 +1,67 @@
+name: "vprofile-IAC"
+on: 
+#    push: 
+#      branches:
+#       - main  
+#       - stage
+#      paths:
+#       - terraform/**
+   pull_request:
+      branches:
+        - main    
+      paths: 
+        -terraform/**  
+
+env:
+  # aws credentials  
+ AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}} 
+ AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+ # bucket 
+ BUCKET_TF_STATE: ${{secrets.BUCKET_TF_STATE}}
+ AWS_REGION: us-east-1 
+ EKS_CLUSTER: vprofile-eks  # name of the cluster
+
+jobs:
+   terraform:  # this is only job we will create name "terraform"
+     #name: "Apply terraform code changes"
+     runs-on: ubuntu-latest   
+     defaults: # what defaults things to use when job is running  ,, // we want to run at terraform dir 
+       run: 
+           shell: bash 
+           working-directory: ./terraform  
+           
+           
+     steps:
+     - name: chechout the code  // 
+       uses: actions/checkout@v4
+
+      # we want to setup terraform to run our code 
+
+     - name: setup terraform 
+       uses: hashicorp/setup-terraform@v3    # action version
+       with: 
+         terraform_version: "1.1.7"    # terraform version
+    
+     - name: terraform init 
+       id: init
+       run: terraform init -backend-config="bucket=$BUCKET_TF_STATE"
+
+     - name: terraform format
+       id: fmt
+       run: terraform fmt -check   
+
+     - name: terraform validate
+       id: vaildate  
+       run:  terraform validate 
+
+
+     - name: terraform plan 
+       id:  plan
+       run: terraform plan  -no-color -input=false  -out planfile  ## -no-color to save some gpu  , input false > nobody pass any input , planfile to store all info at  this file and this file info will use to apply the change (it's a sol for a bug ,you may didn't need it)
+       continue-on-error: true
+
+
+     - name: terraform plan status 
+       if:  steps.plan.outcome == 'failure'
+       run: exit 1   
+
