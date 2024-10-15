@@ -14,10 +14,10 @@ on:
 
 env:
   # aws credentials  
- AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}} 
- AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+ AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }} 
+ AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
  # bucket 
- BUCKET_TF_STATE: ${{secrets.BUCKET_TF_STATE}}
+ BUCKET_TF_STATE: ${{ secrets.BUCKET_TF_STATE }}
  AWS_REGION: us-east-1 
  EKS_CLUSTER: vprofile-eks  # name of the cluster
 
@@ -64,4 +64,31 @@ jobs:
      - name: terraform plan status 
        if:  steps.plan.outcome == 'failure'
        run: exit 1   
+
+##################################################
+# now main stage to apply if there is push on main branch > so if we want to apply just merge with main branch and if branch is locked by admin make a pull-request 
+
+     - name: terraform apply
+       id: apply
+         # excute if branch was main and there is a push event
+       if:  github.ref == 'refs/heads/main' && github.event_name == 'push'   
+       run: terraform apply -auto-approve -input=false  -parallelism=1 planfile  
+
+      ## we need an nginx ingress controller  for our next workflow (vprofile action) , for that we need kubconfig to excute kubctl , we will use eks to update kubconfig
+
+     - name: configure AWS credentials
+       uses: aws-actions/configure-aws-credentials@v4
+       with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region:  ${{env.AWS_REGION}}
+    
+     - name: get kubeconfig file
+       id: kubeconfig     
+       if: steps.apply.outcome == 'success'    
+       run: aws eks update-kubeconfig  --region ${{env.AWS_REGION}}  --name ${{env.EKS_CLUSTER}}   # this command is going to create kubeconfig file that kubectl command use to access the k8s cluster 
+
+     - name: install ingress 
+       if: steps.apply.outcome == 'success'  && steps.kubeconfig.outcome == 'success'
+       run: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.3/deploy/static/provider/aws/deploy.yaml 
 
